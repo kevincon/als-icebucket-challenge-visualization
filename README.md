@@ -4,6 +4,8 @@ This is a web app written in Python (Flask) that uses the `python-twitter`
 library, the `networkx` Python graph library, and the Sigma.js graph visualization library to visualize real-time
 ALS Icebucket Challenge participants and their nominations.
 
+![Animated GIF demo](images/als-graph.gif?raw=true "Animated GIF demo")
+
 ## 10 steps to running the code
 (tested on Mac OSX 10.8.5 using Python 2.7.7)
 
