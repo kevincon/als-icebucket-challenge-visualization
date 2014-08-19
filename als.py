@@ -1,6 +1,7 @@
 import twitter
 import json
 import os
+import random
 from time import sleep
 from networkx import Graph
 from thread import allocate_lock
@@ -14,11 +15,27 @@ graph = Graph()
 node_dict = {}
 lock = allocate_lock()
 
+TWITTER_URL = 'https://twitter.com/'
+STATUS_URL = TWITTER_URL + '#!/twitter/status/'
+
 class Participant(object):
 
     def __init__(self, user, status=None):
         self.user = user
         self.status = status
+
+        self.update_embed()
+
+    def update_embed(self):
+        if self.status:
+            status_url = STATUS_URL + str(self.status.id)
+            try:
+                self.embed = api.GetStatusOembed(url=status_url).get('html')
+            except Exception:
+                self.embed = '<blockquote class="twitter-tweet" lang="en">%s&mdash; %s (@%s) <a href="%s"></a></blockquote><script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>' % (self.status.text, self.user.screen_name, self.user.screen_name, status_url)
+        else:
+            self.embed = '<a href=%s>%s</a>' % (TWITTER_URL + self.user.screen_name,
+                                                self.user.screen_name)
 
     def __str__(self):
         return repr(self)
@@ -50,7 +67,9 @@ def update_data(status):
     screen_name = participant.user.screen_name
     if participant in node_dict.values():
         # user had already been mentioned, let's set status
-        node_dict[screen_name].status = status
+        node = node_dict[screen_name]
+        node.status = status
+        node.update_embed()
     else:
         graph.add_node(participant)
         node_dict[screen_name] = participant
@@ -66,34 +85,35 @@ def update_data(status):
             graph.add_edge(participant, mentioned_participant)
     lock.release()
 
-TWITTER_URL = 'https://twitter.com/'
-STATUS_URL = TWITTER_URL + '#!/twitter/status/'
-
+api = twitter.Api(consumer_key=CONSUMER_KEY,
+                  consumer_secret=CONSUMER_SECRET,
+                  access_token_key=ACCESS_TOKEN_KEY,
+                  access_token_secret=ACCESS_TOKEN_SECRET)
 
 def get_updates():
     result_json = {}
 
     if graph.nodes():
         lock.acquire()
-        result_nodes = [{'name': p.user.screen_name,
-                         'url': STATUS_URL + str(p.status.id) if p.status else TWITTER_URL + p.user.screen_name} for p in graph.nodes()]
-        result_links = [{'source': p1.user.screen_name,
+        result_nodes = [{'id': p.user.screen_name,
+                         'label': p.user.screen_name,
+                         'x': random.random(),
+                         'y': random.random(),
+                         'size': 1.0,
+                         'embed': p.embed} for p in graph.nodes()]
+        result_links = [{'id': '%s->%s' % (p1.user.screen_name, p2.user.screen_name),
+                         'source': p1.user.screen_name,
                          'target': p2.user.screen_name}
                         for (p1, p2) in graph.edges_iter()]
         lock.release()
 
         result_json['nodes'] = result_nodes
-        result_json['links'] = result_links
+        result_json['edges'] = result_links
 
     return json.dumps(result_json)
 
 
 def process_stream():
-    api = twitter.Api(consumer_key=CONSUMER_KEY,
-                  consumer_secret=CONSUMER_SECRET,
-                  access_token_key=ACCESS_TOKEN_KEY,
-                  access_token_secret=ACCESS_TOKEN_SECRET)
-
     stream = api.GetStreamFilter(track=['ALS', 'ice bucket', 'Ice Bucket'])
 
     for t in stream:
@@ -101,7 +121,6 @@ def process_stream():
         if is_completed_challenge(status):
             print 'COMPLETED: %s' % status.text.encode('utf-8')
             update_data(status)
-            print status.id
             sleep(0.5)
 
 if __name__ == '__main__':
